@@ -45,7 +45,7 @@ const StepData& StepSequencer::getStep(int index) const
     return steps_[static_cast<size_t>(std::clamp(index, 0, kMaxSteps - 1))];
 }
 
-void StepSequencer::setRate(int idx) { rateIndex_ = std::clamp(idx, 0, 7); }
+void StepSequencer::setRate(int idx) { rateIndex_ = std::clamp(idx, 0, kNumRates - 1); }
 void StepSequencer::setNumSteps(int n) { numSteps_ = std::clamp(n, 4, kMaxSteps); }
 void StepSequencer::setSwing(float pct) { swing_ = pct * 0.01f; }
 void StepSequencer::setGateLength(float pct) { gateLength_ = pct * 0.01f; }

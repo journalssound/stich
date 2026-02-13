@@ -23,27 +23,27 @@ SequencerPanel::SequencerPanel(StichProcessor& processor)
     setupLaneBtn(pitchLaneBtn_, LaneView::Pitch);
     setupLaneBtn(fxSendLaneBtn_, LaneView::FxSend);
 
-    // Rate combo
-    rateBox_.addItemList({"1/1", "1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"}, 1);
+    // Rate combo - uses full 14-rate list
+    rateBox_.addItemList(StepSequencer::getRateNames(), 1);
     addAndMakeVisible(rateBox_);
     rateAttachment_ = std::make_unique<ComboAttachment>(apvts, ParamID::SeqRate, rateBox_);
 
     // Gate shape combo
-    gateShapeBox_.addItemList({"Sharp", "Soft", "Ramp Up", "Ramp Down", "Triangle"}, 1);
+    gateShapeBox_.addItemList({"sharp", "soft", "ramp up", "ramp down", "triangle"}, 1);
     addAndMakeVisible(gateShapeBox_);
     gateShapeAttachment_ = std::make_unique<ComboAttachment>(apvts, ParamID::SeqGateShape, gateShapeBox_);
 
     // Filter type combo
-    filterTypeBox_.addItemList({"Low Pass", "Band Pass", "High Pass", "Notch"}, 1);
+    filterTypeBox_.addItemList({"low pass", "band pass", "high pass", "notch"}, 1);
     addAndMakeVisible(filterTypeBox_);
     filterTypeAttachment_ = std::make_unique<ComboAttachment>(apvts, ParamID::FilterType, filterTypeBox_);
 
     // Knobs
-    swingKnob_ = createKnob("SWING", ParamID::SeqSwing, apvts);
-    gateLengthKnob_ = createKnob("GATE LEN", ParamID::SeqGateLength, apvts);
-    patDensityKnob_ = createKnob("PAT DENS", ParamID::PatDensity, apvts);
-    patVariationKnob_ = createKnob("VARIATION", ParamID::PatVariation, apvts);
-    filterResoKnob_ = createKnob("RESO", ParamID::FilterReso, apvts);
+    initKnob(swingKnob_,       "swing",     ParamID::SeqSwing,      apvts);
+    initKnob(gateLengthKnob_,  "gate len",  ParamID::SeqGateLength, apvts);
+    initKnob(patDensityKnob_,  "density",   ParamID::PatDensity,    apvts);
+    initKnob(patVariationKnob_,"variation",  ParamID::PatVariation,  apvts);
+    initKnob(filterResoKnob_,  "reso",      ParamID::FilterReso,    apvts);
 
     for (auto* k : {&swingKnob_, &gateLengthKnob_, &patDensityKnob_, &patVariationKnob_, &filterResoKnob_})
     {
@@ -71,18 +71,16 @@ SequencerPanel::~SequencerPanel()
     stopTimer();
 }
 
-SequencerPanel::LabelledKnob SequencerPanel::createKnob(
+void SequencerPanel::initKnob(LabelledKnob& k,
     const juce::String& name, const juce::String& paramID,
     juce::AudioProcessorValueTreeState& apvts)
 {
-    LabelledKnob k;
     k.slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     k.slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 55, 14);
     k.label.setText(name, juce::dontSendNotification);
     k.label.setJustificationType(juce::Justification::centred);
-    k.label.setFont(juce::Font(10.0f));
+    k.label.setFont(juce::FontOptions(10.0f));
     k.attachment = std::make_unique<SliderAttachment>(apvts, paramID, k.slider);
-    return k;
 }
 
 void SequencerPanel::timerCallback()
@@ -97,14 +95,12 @@ void SequencerPanel::timerCallback()
 
 void SequencerPanel::paint(juce::Graphics& g)
 {
-    g.setColour(Colours::panelBg);
-    g.fillRoundedRectangle(getLocalBounds().toFloat(), 6.0f);
-    g.setColour(Colours::panelBorder);
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 6.0f, 1.0f);
+    // Glass panel background
+    StichLookAndFeel::drawGlassPanel(g, getLocalBounds().toFloat());
 
     g.setColour(Colours::textSecondary);
-    g.setFont(juce::Font(13.0f, juce::Font::bold));
-    g.drawText("SEQUENCER", 10, 6, 120, 18, juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(12.0f));
+    g.drawText("sequencer", 12, 8, 100, 16, juce::Justification::centredLeft);
 
     // Draw step grid
     drawStepGrid(g, gridArea_);
@@ -118,7 +114,17 @@ void SequencerPanel::drawStepGrid(juce::Graphics& g, juce::Rectangle<int> area)
 
     float cellW = static_cast<float>(area.getWidth()) / static_cast<float>(numSteps);
     float cellH = static_cast<float>(area.getHeight());
-    float gap = 2.0f;
+    float gap = 3.0f;
+
+    // Determine lane colour
+    juce::Colour laneColour;
+    switch (currentLane_)
+    {
+        case LaneView::Gate:    laneColour = Colours::gateLane;   break;
+        case LaneView::Filter:  laneColour = Colours::filterLane; break;
+        case LaneView::Pitch:   laneColour = Colours::pitchLane;  break;
+        case LaneView::FxSend:  laneColour = Colours::fxLane;     break;
+    }
 
     for (int i = 0; i < numSteps; ++i)
     {
@@ -144,9 +150,11 @@ void SequencerPanel::drawStepGrid(juce::Graphics& g, juce::Rectangle<int> area)
 void SequencerPanel::drawGateStep(juce::Graphics& g, juce::Rectangle<float> cell,
                                    const StepData& step, bool isCurrent)
 {
-    // Background
-    g.setColour(Colours::stepInactive);
-    g.fillRoundedRectangle(cell, 3.0f);
+    float glowAlpha = isCurrent ? 0.7f : 0.0f;
+    juce::Colour fillColour = step.active ? Colours::stepInactive.brighter(0.05f) : Colours::stepInactive;
+
+    // Draw base glass rect
+    StichLookAndFeel::drawGlassRect(g, cell, fillColour, isCurrent ? 0.15f : 0.0f, Colours::stepGlow);
 
     if (step.active)
     {
@@ -154,97 +162,83 @@ void SequencerPanel::drawGateStep(juce::Graphics& g, juce::Rectangle<float> cell
         float barH = cell.getHeight() * step.gate;
         auto bar = cell.withTop(cell.getBottom() - barH);
 
-        auto colour = isCurrent ? Colours::stepCurrent : Colours::stepActive;
+        auto colour = isCurrent ? Colours::stepCurrent : Colours::gateLane;
         // Dim based on probability
         colour = colour.withAlpha(0.4f + step.probability * 0.6f);
-        g.setColour(colour);
-        g.fillRoundedRectangle(bar, 3.0f);
-    }
 
-    // Current step indicator
-    if (isCurrent)
-    {
-        g.setColour(Colours::stepCurrent.withAlpha(0.3f));
-        g.drawRoundedRectangle(cell.reduced(1.0f), 3.0f, 2.0f);
+        // Draw the value bar with glow
+        StichLookAndFeel::drawGlassRect(g, bar, colour.withAlpha(0.6f),
+                                         glowAlpha, Colours::gateLane);
     }
 }
 
 void SequencerPanel::drawFilterStep(juce::Graphics& g, juce::Rectangle<float> cell,
                                      const StepData& step, bool isCurrent)
 {
-    g.setColour(Colours::stepInactive);
-    g.fillRoundedRectangle(cell, 3.0f);
+    float glowAlpha = isCurrent ? 0.7f : 0.0f;
+
+    // Draw base glass rect
+    StichLookAndFeel::drawGlassRect(g, cell, Colours::stepInactive, isCurrent ? 0.15f : 0.0f, Colours::stepGlow);
 
     // Filter cutoff bar
     float barH = cell.getHeight() * step.filterCutoff;
     auto bar = cell.withTop(cell.getBottom() - barH);
     auto colour = isCurrent ? Colours::stepCurrent : Colours::filterLane;
-    g.setColour(colour);
-    g.fillRoundedRectangle(bar, 3.0f);
 
-    if (isCurrent)
-    {
-        g.setColour(Colours::stepCurrent.withAlpha(0.3f));
-        g.drawRoundedRectangle(cell.reduced(1.0f), 3.0f, 2.0f);
-    }
+    StichLookAndFeel::drawGlassRect(g, bar, colour.withAlpha(0.6f),
+                                     glowAlpha, Colours::filterLane);
 }
 
 void SequencerPanel::drawPitchStep(juce::Graphics& g, juce::Rectangle<float> cell,
                                     const StepData& step, bool isCurrent)
 {
-    g.setColour(Colours::stepInactive);
-    g.fillRoundedRectangle(cell, 3.0f);
+    float glowAlpha = isCurrent ? 0.7f : 0.0f;
 
-    // Pitch: draw from center (0 = middle, +/- = above/below)
+    // Draw base glass rect
+    StichLookAndFeel::drawGlassRect(g, cell, Colours::stepInactive, isCurrent ? 0.15f : 0.0f, Colours::stepGlow);
+
+    // Pitch: draw from center
     float centerY = cell.getCentreY();
     float maxPitch = 24.0f;
     float normalizedPitch = std::clamp(step.pitchOffset / maxPitch, -1.0f, 1.0f);
     float barH = std::abs(normalizedPitch) * cell.getHeight() * 0.5f;
 
     auto colour = isCurrent ? Colours::stepCurrent : Colours::pitchLane;
-    g.setColour(colour);
 
     if (normalizedPitch > 0.001f)
     {
-        g.fillRoundedRectangle(cell.getX(), centerY - barH,
-                                cell.getWidth(), barH, 3.0f);
+        auto bar = juce::Rectangle<float>(cell.getX(), centerY - barH, cell.getWidth(), barH);
+        StichLookAndFeel::drawGlassRect(g, bar, colour.withAlpha(0.6f),
+                                         glowAlpha, Colours::pitchLane);
     }
     else if (normalizedPitch < -0.001f)
     {
-        g.fillRoundedRectangle(cell.getX(), centerY,
-                                cell.getWidth(), barH, 3.0f);
+        auto bar = juce::Rectangle<float>(cell.getX(), centerY, cell.getWidth(), barH);
+        StichLookAndFeel::drawGlassRect(g, bar, colour.withAlpha(0.6f),
+                                         glowAlpha, Colours::pitchLane);
     }
 
     // Center line
     g.setColour(Colours::textSecondary.withAlpha(0.3f));
     g.drawHorizontalLine(static_cast<int>(centerY), cell.getX(), cell.getRight());
-
-    if (isCurrent)
-    {
-        g.setColour(Colours::stepCurrent.withAlpha(0.3f));
-        g.drawRoundedRectangle(cell.reduced(1.0f), 3.0f, 2.0f);
-    }
 }
 
 void SequencerPanel::drawFxSendStep(juce::Graphics& g, juce::Rectangle<float> cell,
                                      const StepData& step, bool isCurrent)
 {
-    g.setColour(Colours::stepInactive);
-    g.fillRoundedRectangle(cell, 3.0f);
+    float glowAlpha = isCurrent ? 0.7f : 0.0f;
+
+    // Draw base glass rect
+    StichLookAndFeel::drawGlassRect(g, cell, Colours::stepInactive, isCurrent ? 0.15f : 0.0f, Colours::stepGlow);
 
     if (step.fxSend > 0.001f)
     {
         float barH = cell.getHeight() * step.fxSend;
         auto bar = cell.withTop(cell.getBottom() - barH);
         auto colour = isCurrent ? Colours::stepCurrent : Colours::fxLane;
-        g.setColour(colour);
-        g.fillRoundedRectangle(bar, 3.0f);
-    }
 
-    if (isCurrent)
-    {
-        g.setColour(Colours::stepCurrent.withAlpha(0.3f));
-        g.drawRoundedRectangle(cell.reduced(1.0f), 3.0f, 2.0f);
+        StichLookAndFeel::drawGlassRect(g, bar, colour.withAlpha(0.6f),
+                                         glowAlpha, Colours::fxLane);
     }
 }
 
@@ -319,8 +313,8 @@ void SequencerPanel::mouseDrag(const juce::MouseEvent& e)
 
 void SequencerPanel::resized()
 {
-    auto area = getLocalBounds().reduced(8);
-    area.removeFromTop(24); // header
+    auto area = getLocalBounds().reduced(10);
+    area.removeFromTop(26); // header
 
     // Lane selector buttons row
     auto laneBtnRow = area.removeFromTop(24);
@@ -355,7 +349,7 @@ void SequencerPanel::resized()
 
     // Rate combo
     auto rateArea = controlsRow.removeFromLeft(cellW);
-    rateArea.removeFromTop(labelH); // skip label space
+    rateArea.removeFromTop(labelH);
     rateBox_.setBounds(rateArea.withSizeKeepingCentre(comboW, comboH));
 
     // Shape combo

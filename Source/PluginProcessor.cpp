@@ -6,7 +6,8 @@ StichProcessor::StichProcessor()
     : AudioProcessor(BusesProperties()
                      .withInput("Input",  juce::AudioChannelSet::stereo(), true)
                      .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts_(*this, nullptr, "Parameters", Parameters::createLayout())
+      apvts_(*this, nullptr, "Parameters", Parameters::createLayout()),
+      presetManager_(*this)
 {
     // Cache raw parameter pointers
     grainSizeParam_     = apvts_.getRawParameterValue(ParamID::GrainSize);
@@ -17,6 +18,8 @@ StichProcessor::StichProcessor()
     grainFreezeParam_   = apvts_.getRawParameterValue(ParamID::GrainFreeze);
     grainFeedbackParam_ = apvts_.getRawParameterValue(ParamID::GrainFeedback);
     grainMixParam_      = apvts_.getRawParameterValue(ParamID::GrainMix);
+    grainWindowParam_   = apvts_.getRawParameterValue(ParamID::GrainWindow);
+    grainModeParam_     = apvts_.getRawParameterValue(ParamID::GrainMode);
 
     seqRateParam_       = apvts_.getRawParameterValue(ParamID::SeqRate);
     seqNumStepsParam_   = apvts_.getRawParameterValue(ParamID::SeqNumSteps);
@@ -32,8 +35,22 @@ StichProcessor::StichProcessor()
     filterTypeParam_    = apvts_.getRawParameterValue(ParamID::FilterType);
     filterResoParam_    = apvts_.getRawParameterValue(ParamID::FilterReso);
 
+    reverbEnabledParam_   = apvts_.getRawParameterValue(ParamID::ReverbEnabled);
+    reverbPreDelayParam_  = apvts_.getRawParameterValue(ParamID::ReverbPreDelay);
+    reverbSizeParam_      = apvts_.getRawParameterValue(ParamID::ReverbSize);
+    reverbDecayParam_     = apvts_.getRawParameterValue(ParamID::ReverbDecay);
+    reverbDampingParam_   = apvts_.getRawParameterValue(ParamID::ReverbDamping);
+    reverbDiffusionParam_ = apvts_.getRawParameterValue(ParamID::ReverbDiffusion);
+    reverbModRateParam_   = apvts_.getRawParameterValue(ParamID::ReverbModRate);
+    reverbModDepthParam_  = apvts_.getRawParameterValue(ParamID::ReverbModDepth);
+    reverbLowCutParam_    = apvts_.getRawParameterValue(ParamID::ReverbLowCut);
+    reverbHighCutParam_   = apvts_.getRawParameterValue(ParamID::ReverbHighCut);
+    reverbMixParam_       = apvts_.getRawParameterValue(ParamID::ReverbMix);
+
     masterOutputParam_  = apvts_.getRawParameterValue(ParamID::MasterOutput);
     masterMixParam_     = apvts_.getRawParameterValue(ParamID::MasterMix);
+
+    presetManager_.initFactoryPresets();
 }
 
 StichProcessor::~StichProcessor() = default;
@@ -42,12 +59,14 @@ void StichProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     granularEngine_.prepare(sampleRate, samplesPerBlock);
     sequencer_.prepare(sampleRate, samplesPerBlock);
+    reverb_.prepare(sampleRate, samplesPerBlock);
 }
 
 void StichProcessor::releaseResources()
 {
     granularEngine_.reset();
     sequencer_.reset();
+    reverb_.reset();
 }
 
 bool StichProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
@@ -75,6 +94,8 @@ void StichProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
     granularEngine_.setFreeze(grainFreezeParam_->load() > 0.5f);
     granularEngine_.setFeedback(grainFeedbackParam_->load());
     granularEngine_.setMix(grainMixParam_->load());
+    granularEngine_.setWindow(static_cast<Stich::GrainWindow>(static_cast<int>(grainWindowParam_->load())));
+    granularEngine_.setMode(static_cast<Stich::GranularMode>(static_cast<int>(grainModeParam_->load())));
 
     // Update sequencer parameters
     sequencer_.setRate(static_cast<int>(seqRateParam_->load()));
@@ -90,6 +111,19 @@ void StichProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
     patternGen_.setDensity(patDensityParam_->load());
     patternGen_.setVariation(patVariationParam_->load());
     patternGen_.setLocked(patLockParam_->load() > 0.5f);
+
+    // Update reverb parameters
+    reverb_.setEnabled(reverbEnabledParam_->load() > 0.5f);
+    reverb_.setPreDelay(reverbPreDelayParam_->load());
+    reverb_.setSize(reverbSizeParam_->load() * 0.01f);
+    reverb_.setDecay(reverbDecayParam_->load() * 0.01f);
+    reverb_.setDamping(reverbDampingParam_->load() * 0.01f);
+    reverb_.setDiffusion(reverbDiffusionParam_->load() * 0.01f);
+    reverb_.setModRate(reverbModRateParam_->load());
+    reverb_.setModDepth(reverbModDepthParam_->load() * 0.01f);
+    reverb_.setLowCut(reverbLowCutParam_->load());
+    reverb_.setHighCut(reverbHighCutParam_->load());
+    reverb_.setMix(reverbMixParam_->load() * 0.01f);
 
     // Route sequencer modulation to granular engine
     auto seqOut = sequencer_.getCurrentOutput();
@@ -109,7 +143,6 @@ void StichProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
     float* right = buffer.getWritePointer(1);
 
     // 1. Granular processing
-    // Use temp buffers so granular can read input and write output separately
     juce::AudioBuffer<float> granularOut(2, numSamples);
     granularEngine_.process(granularOut.getWritePointer(0),
                             granularOut.getWritePointer(1),
@@ -123,9 +156,9 @@ void StichProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
 
     // 2. Step sequencer (gate + filter)
     juce::AudioPlayHead::PositionInfo posInfo;
-    if (auto* playHead = getPlayHead())
+    if (auto* ph = getPlayHead())
     {
-        auto pos = playHead->getPosition();
+        auto pos = ph->getPosition();
         if (pos.hasValue())
             posInfo = *pos;
     }
@@ -138,12 +171,16 @@ void StichProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
     int curStep = sequencer_.getCurrentStep();
     if (prevStep_ > curStep && prevStep_ != -1)
     {
-        // Wrapped around = cycle complete
         patternGen_.onSequencerCycleComplete(sequencer_);
     }
     prevStep_ = curStep;
 
-    // 3. Master mix (blend processed with dry)
+    // 3. Reverb (after sequencer, before master mix)
+    left  = buffer.getWritePointer(0);
+    right = buffer.getWritePointer(1);
+    reverb_.process(left, right, numSamples);
+
+    // 4. Master mix (blend processed with dry)
     if (masterMix < 1.0f)
     {
         float wet = masterMix;
@@ -157,7 +194,7 @@ void StichProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
         }
     }
 
-    // 4. Master output gain
+    // 5. Master output gain
     float outputGain = juce::Decibels::decibelsToGain(masterOutputParam_->load(), -60.0f);
     buffer.applyGain(outputGain);
 }
@@ -189,10 +226,8 @@ void StichProcessor::setStateInformation(const void* data, int sizeInBytes)
         auto tree = juce::ValueTree::fromXml(*xml);
         if (tree.isValid())
         {
-            // Restore APVTS parameters
             apvts_.replaceState(tree);
 
-            // Restore step sequencer data
             auto seqState = tree.getChildWithName("StepSequencerState");
             if (seqState.isValid())
                 sequencer_.deserializeSteps(seqState);

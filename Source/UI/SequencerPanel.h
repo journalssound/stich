@@ -42,8 +42,8 @@ private:
         juce::Label label;
         std::unique_ptr<SliderAttachment> attachment;
     };
-    LabelledKnob createKnob(const juce::String& name, const juce::String& paramID,
-                             juce::AudioProcessorValueTreeState& apvts);
+    void initKnob(LabelledKnob& k, const juce::String& name, const juce::String& paramID,
+                   juce::AudioProcessorValueTreeState& apvts);
 
     void drawStepGrid(juce::Graphics& g, juce::Rectangle<int> area);
     void drawGateStep(juce::Graphics& g, juce::Rectangle<float> cell, const StepData& step, bool isCurrent);

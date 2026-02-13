@@ -1,13 +1,15 @@
 #pragma once
-#include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 #include <functional>
+#include <random>
 
 namespace Stich
 {
 
 static constexpr int kMaxSteps = 32;
 static constexpr int kDefaultSteps = 16;
+static constexpr int kNumRates = 14;
 
 enum class GateShape
 {
@@ -28,15 +30,14 @@ enum class FilterType
 
 struct StepData
 {
-    float gate = 1.0f;          // 0-1 amplitude
-    float filterCutoff = 1.0f;  // 0-1 normalized (mapped to freq later)
-    float pitchOffset = 0.0f;   // semitones
-    float fxSend = 0.0f;        // 0-1
-    float probability = 1.0f;   // 0-1
+    float gate = 1.0f;
+    float filterCutoff = 1.0f;
+    float pitchOffset = 0.0f;
+    float fxSend = 0.0f;
+    float probability = 1.0f;
     bool active = true;
 };
 
-// Per-sample output of the sequencer for modulating the signal chain
 struct SequencerOutput
 {
     float gateAmplitude = 1.0f;
@@ -44,10 +45,9 @@ struct SequencerOutput
     float pitchOffsetSt = 0.0f;
     float fxSendAmount = 0.0f;
     int currentStep = 0;
-    bool stepTriggered = false; // true on the exact sample a new step starts
+    bool stepTriggered = false;
 };
 
-// SVF filter state
 struct SVFState
 {
     float ic1eq = 0.0f;
@@ -62,22 +62,18 @@ public:
     void prepare(double sampleRate, int samplesPerBlock);
     void reset();
 
-    // Process audio through the gate + filter. Modifies buffer in-place.
     void process(float* leftIO, float* rightIO, int numSamples,
                  const juce::AudioPlayHead::PositionInfo* posInfo);
 
-    // Access step data for UI
     StepData& getStep(int index);
     const StepData& getStep(int index) const;
     int getNumSteps() const { return numSteps_; }
     int getCurrentStep() const { return currentStep_; }
 
-    // State serialization for step data
     juce::ValueTree serializeSteps() const;
     void deserializeSteps(const juce::ValueTree& tree);
 
-    // Parameter setters
-    void setRate(int rateIndex); // index into rate table
+    void setRate(int rateIndex);
     void setNumSteps(int steps);
     void setSwing(float percent);
     void setGateLength(float percent);
@@ -86,15 +82,20 @@ public:
     void setFilterType(FilterType type);
     void setFilterResonance(float percent);
 
-    // Get current modulation values (for routing to granular engine)
     SequencerOutput getCurrentOutput() const { return currentOutput_; }
 
-    // Randomize steps using pattern generator values
     void randomizeGateLane(float density);
     void randomizeFilterLane(float baseValue, float variation);
     void randomizePitchLane(float range, float density);
     void randomizeFxSendLane(float density, float amount);
     void randomizeProbabilities(float baseProb);
+
+    // Rate names for UI
+    static juce::StringArray getRateNames()
+    {
+        return {"1/1", "1/2D", "1/2", "1/4D", "1/4", "1/4T",
+                "1/8D", "1/8", "1/8T", "1/16D", "1/16", "1/16T", "1/32", "1/32T"};
+    }
 
 private:
     float computeGateEnvelope(double phaseInStep) const;
@@ -103,9 +104,24 @@ private:
     void advanceStep();
     bool shouldStepPlay(int step) const;
 
-    // Rate table: multipliers relative to quarter note
-    // 1/1=0.25, 1/2=0.5, 1/4=1, 1/8=2, 1/8T=3, 1/16=4, 1/16T=6, 1/32=8
-    static constexpr double kRateMultipliers[] = {0.25, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0};
+    // Full rate table: steps per quarter note (slow to fast)
+    // 1/1, 1/2D, 1/2, 1/4D, 1/4, 1/4T, 1/8D, 1/8, 1/8T, 1/16D, 1/16, 1/16T, 1/32, 1/32T
+    static constexpr double kRateMultipliers[kNumRates] = {
+        0.25,     // 1/1  (whole note = 4 beats)
+        1.0/3.0,  // 1/2D (dotted half = 3 beats)
+        0.5,      // 1/2  (half note = 2 beats)
+        2.0/3.0,  // 1/4D (dotted quarter = 1.5 beats)
+        1.0,      // 1/4  (quarter note)
+        1.5,      // 1/4T (triplet quarter = 2/3 beat)
+        4.0/3.0,  // 1/8D (dotted eighth = 0.75 beat)
+        2.0,      // 1/8  (eighth note)
+        3.0,      // 1/8T (triplet eighth)
+        8.0/3.0,  // 1/16D (dotted sixteenth)
+        4.0,      // 1/16 (sixteenth note)
+        6.0,      // 1/16T (triplet sixteenth)
+        8.0,      // 1/32 (thirty-second note)
+        12.0      // 1/32T (triplet thirty-second)
+    };
 
     std::array<StepData, kMaxSteps> steps_;
     int numSteps_ = kDefaultSteps;
@@ -117,26 +133,21 @@ private:
     double samplesPerStep_ = 0.0;
     bool isPlaying_ = false;
 
-    // Parameters
-    int rateIndex_ = 3; // default 1/8
+    int rateIndex_ = 7; // default 1/8
     float swing_ = 0.0f;
     float gateLength_ = 0.75f;
     GateShape gateShape_ = GateShape::Soft;
     bool enabled_ = true;
 
-    // Filter
     FilterType filterType_ = FilterType::LowPass;
     float filterReso_ = 0.2f;
     SVFState svfL_, svfR_;
 
-    // Current output for modulation routing
     SequencerOutput currentOutput_;
 
-    // For probability
     mutable std::mt19937 rng_{std::random_device{}()};
     mutable std::uniform_real_distribution<float> dist01_{0.0f, 1.0f};
 
-    // Track whether current step passed probability check
     bool currentStepPlaying_ = true;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StepSequencer)

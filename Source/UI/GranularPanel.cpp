@@ -7,74 +7,83 @@ namespace Stich
 {
 
 GranularPanel::GranularPanel(StichProcessor& processor)
-    : grainSize_(createKnob("SIZE", ParamID::GrainSize, processor.getAPVTS())),
-      grainDensity_(createKnob("DENSITY", ParamID::GrainDensity, processor.getAPVTS())),
-      spray_(createKnob("SPRAY", ParamID::GrainSpray, processor.getAPVTS())),
-      pitch_(createKnob("PITCH", ParamID::GrainPitch, processor.getAPVTS())),
-      reverse_(createKnob("REVERSE", ParamID::GrainReverse, processor.getAPVTS())),
-      feedback_(createKnob("FEEDBACK", ParamID::GrainFeedback, processor.getAPVTS())),
-      grainMix_(createKnob("MIX", ParamID::GrainMix, processor.getAPVTS()))
 {
-    auto addKnob = [this](LabelledKnob& k)
-    {
-        addAndMakeVisible(k.slider);
-        addAndMakeVisible(k.label);
-    };
+    auto& apvts = processor.getAPVTS();
 
-    addKnob(grainSize_);
-    addKnob(grainDensity_);
-    addKnob(spray_);
-    addKnob(pitch_);
-    addKnob(reverse_);
-    addKnob(feedback_);
-    addKnob(grainMix_);
+    initKnob(grainSize_,    "size",      ParamID::GrainSize,     apvts);
+    initKnob(grainDensity_, "density",   ParamID::GrainDensity,  apvts);
+    initKnob(spray_,        "spray",     ParamID::GrainSpray,    apvts);
+    initKnob(pitch_,        "pitch",     ParamID::GrainPitch,    apvts);
+    initKnob(reverse_,      "reverse",   ParamID::GrainReverse,  apvts);
+    initKnob(feedback_,     "feedback",  ParamID::GrainFeedback, apvts);
+    initKnob(grainMix_,     "grain mix", ParamID::GrainMix,      apvts);
+
+    for (auto* k : {&grainSize_, &grainDensity_, &spray_, &pitch_,
+                    &reverse_, &feedback_, &grainMix_})
+    {
+        addAndMakeVisible(k->slider);
+        addAndMakeVisible(k->label);
+    }
 
     addAndMakeVisible(freezeButton_);
     freezeAttachment_ = std::make_unique<ButtonAttachment>(
-        processor.getAPVTS(), ParamID::GrainFreeze, freezeButton_);
+        apvts, ParamID::GrainFreeze, freezeButton_);
+
+    // Window shape combo
+    windowBox_.addItemList({"hann", "gaussian", "triangle", "trapezoid", "blackman", "rectangle", "half sine"}, 1);
+    addAndMakeVisible(windowBox_);
+    windowAttachment_ = std::make_unique<ComboAttachment>(
+        apvts, ParamID::GrainWindow, windowBox_);
+
+    // Mode combo
+    modeBox_.addItemList({"standard", "cloud", "delay", "spectral", "stretch", "scatter"}, 1);
+    addAndMakeVisible(modeBox_);
+    modeAttachment_ = std::make_unique<ComboAttachment>(
+        apvts, ParamID::GrainMode, modeBox_);
 }
 
 GranularPanel::~GranularPanel() = default;
 
-GranularPanel::LabelledKnob GranularPanel::createKnob(
+void GranularPanel::initKnob(LabelledKnob& k,
     const juce::String& name, const juce::String& paramID,
     juce::AudioProcessorValueTreeState& apvts)
 {
-    LabelledKnob k;
     k.slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    k.slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 16);
+    k.slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 55, 14);
     k.label.setText(name, juce::dontSendNotification);
     k.label.setJustificationType(juce::Justification::centred);
-    k.label.setFont(juce::Font(11.0f));
+    k.label.setFont(juce::FontOptions(10.0f));
     k.attachment = std::make_unique<SliderAttachment>(apvts, paramID, k.slider);
-    return k;
 }
 
 void GranularPanel::paint(juce::Graphics& g)
 {
-    g.setColour(Colours::panelBg);
-    g.fillRoundedRectangle(getLocalBounds().toFloat(), 6.0f);
-    g.setColour(Colours::panelBorder);
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 6.0f, 1.0f);
+    StichLookAndFeel::drawGlassPanel(g, getLocalBounds().toFloat());
 
     g.setColour(Colours::textSecondary);
-    g.setFont(juce::Font(13.0f, juce::Font::bold));
-    g.drawText("GRANULAR", 10, 6, 120, 18, juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(12.0f));
+    g.drawText("granular", 12, 8, 100, 16, juce::Justification::centredLeft);
 }
 
 void GranularPanel::resized()
 {
-    auto area = getLocalBounds().reduced(8);
-    area.removeFromTop(24); // header space
+    auto area = getLocalBounds().reduced(10);
+    area.removeFromTop(26);
 
-    int knobSize = 70;
-    int labelH = 16;
-    int cellW = (area.getWidth() - 10) / 4;
+    int knobSize = 60;
+    int labelH = 14;
+
+    // Top row: Mode and Window combos
+    auto comboRow = area.removeFromTop(24);
+    modeBox_.setBounds(comboRow.removeFromLeft(comboRow.getWidth() / 2).reduced(2));
+    windowBox_.setBounds(comboRow.reduced(2));
+
+    area.removeFromTop(4);
 
     // Row 1: Size, Density, Spray, Pitch
+    int cellW = (area.getWidth()) / 4;
     auto row1 = area.removeFromTop(knobSize + labelH);
-    auto placeKnob = [&](LabelledKnob& k, juce::Rectangle<int> cell)
-    {
+    auto placeKnob = [&](LabelledKnob& k, juce::Rectangle<int> cell) {
         k.label.setBounds(cell.removeFromTop(labelH));
         k.slider.setBounds(cell.withSizeKeepingCentre(knobSize, knobSize));
     };
@@ -84,7 +93,7 @@ void GranularPanel::resized()
     placeKnob(spray_,        row1.removeFromLeft(cellW));
     placeKnob(pitch_,        row1);
 
-    area.removeFromTop(4);
+    area.removeFromTop(2);
 
     // Row 2: Reverse, Feedback, Mix, Freeze
     auto row2 = area.removeFromTop(knobSize + labelH);
@@ -92,8 +101,7 @@ void GranularPanel::resized()
     placeKnob(feedback_, row2.removeFromLeft(cellW));
     placeKnob(grainMix_, row2.removeFromLeft(cellW));
 
-    // Freeze button in remaining space
-    auto freezeArea = row2.withSizeKeepingCentre(60, 28);
+    auto freezeArea = row2.withSizeKeepingCentre(60, 26);
     freezeButton_.setBounds(freezeArea);
 }
 

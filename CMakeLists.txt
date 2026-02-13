@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Stich VERSION 0.1.0 LANGUAGES CXX)
+project(Stich VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -36,6 +36,8 @@ target_sources(Stich
         Source/DSP/GranularEngine.cpp
         Source/DSP/StepSequencer.cpp
         Source/DSP/PatternGenerator.cpp
+        Source/DSP/Reverb.cpp
+        Source/DSP/PresetManager.cpp
         Source/UI/SequencerPanel.cpp
         Source/UI/GranularPanel.cpp
         Source/UI/StichLookAndFeel.cpp

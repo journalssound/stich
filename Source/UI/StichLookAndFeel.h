@@ -4,25 +4,54 @@
 namespace Stich
 {
 
-// Dark, modern aesthetic inspired by Portal/Life
+// journals-studio.com inspired colour palette
+// Blue-to-orange gradient, glass morphism, warm/cool storytelling
 namespace Colours
 {
-    const juce::Colour background    {0xFF1A1A2E};
-    const juce::Colour panelBg       {0xFF16213E};
-    const juce::Colour panelBorder   {0xFF0F3460};
-    const juce::Colour accent        {0xFF00D2FF};
-    const juce::Colour accentDim     {0xFF006B82};
-    const juce::Colour accentWarm    {0xFFFF6B35};
-    const juce::Colour stepActive    {0xFF00D2FF};
-    const juce::Colour stepInactive  {0xFF2A2A4A};
-    const juce::Colour stepCurrent   {0xFFFFFFFF};
-    const juce::Colour filterLane    {0xFFFF6B35};
-    const juce::Colour pitchLane     {0xFF7B2FBE};
-    const juce::Colour fxLane        {0xFF00CC88};
-    const juce::Colour textPrimary   {0xFFE0E0E0};
-    const juce::Colour textSecondary {0xFF8888AA};
-    const juce::Colour knobFill      {0xFF2A2A4A};
-    const juce::Colour knobArc       {0xFF00D2FF};
+    // Background gradient endpoints
+    const juce::Colour gradientBlue    {0xFF4A90E2};
+    const juce::Colour gradientCyan    {0xFF6CAFE3};
+    const juce::Colour gradientOrange  {0xFFFF9F5C};
+    const juce::Colour gradientBurnt   {0xFFFF7A42};
+
+    // Core palette
+    const juce::Colour background      {0xFF1E2A3A};  // Dark blue-grey base
+    const juce::Colour panelBg         {juce::Colour(255, 255, 255).withAlpha(0.08f)};
+    const juce::Colour panelBgHover    {juce::Colour(255, 255, 255).withAlpha(0.12f)};
+    const juce::Colour panelBorder     {juce::Colour(255, 255, 255).withAlpha(0.22f)};
+
+    // Accent
+    const juce::Colour accentBlue      {0xFF4A90E2};
+    const juce::Colour accentOrange    {0xFFFF6B35};
+    const juce::Colour accentCyan      {0xFF89C4E8};
+
+    // Step colours
+    const juce::Colour stepActive      {0xFF4A90E2};
+    const juce::Colour stepInactive    {juce::Colour(255, 255, 255).withAlpha(0.06f)};
+    const juce::Colour stepCurrent     {0xFFFFFFFF};
+    const juce::Colour stepGlow        {0xFF4A90E2}; // glow colour for active step
+
+    // Lane colours
+    const juce::Colour gateLane        {0xFF4A90E2};
+    const juce::Colour filterLane      {0xFFFF6B35};
+    const juce::Colour pitchLane       {0xFF89C4E8};
+    const juce::Colour fxLane          {0xFF6CAFE3};
+
+    // Text
+    const juce::Colour textPrimary     {juce::Colour(255, 255, 255).withAlpha(0.92f)};
+    const juce::Colour textSecondary   {juce::Colour(255, 255, 255).withAlpha(0.55f)};
+
+    // Knob
+    const juce::Colour knobFill        {juce::Colour(0, 0, 0).withAlpha(0.32f)};
+    const juce::Colour knobArc         {0xFF4A90E2};
+    const juce::Colour knobArcWarm     {0xFFFF6B35};
+
+    // Dry/wet gradient
+    inline juce::Colour dryWetColour(float amount)
+    {
+        // 0 = blue (dry), 1 = orange (wet)
+        return accentBlue.interpolatedWith(accentOrange, amount);
+    }
 }
 
 class StichLookAndFeel : public juce::LookAndFeel_V4
@@ -48,6 +77,12 @@ public:
                       juce::ComboBox& box) override;
 
     void drawLabel(juce::Graphics& g, juce::Label& label) override;
+
+    // Helper to draw glass panel background
+    static void drawGlassPanel(juce::Graphics& g, juce::Rectangle<float> bounds, float cornerRadius = 16.0f);
+    static void drawGlassRect(juce::Graphics& g, juce::Rectangle<float> bounds,
+                               juce::Colour fillColour, float glowAlpha = 0.0f,
+                               juce::Colour glowColour = Colours::stepGlow);
 };
 
 } // namespace Stich

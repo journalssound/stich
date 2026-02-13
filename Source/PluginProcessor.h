@@ -3,6 +3,8 @@
 #include "DSP/GranularEngine.h"
 #include "DSP/StepSequencer.h"
 #include "DSP/PatternGenerator.h"
+#include "DSP/Reverb.h"
+#include "DSP/PresetManager.h"
 
 class StichProcessor : public juce::AudioProcessor
 {
@@ -14,6 +16,7 @@ public:
     void releaseResources() override;
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    using AudioProcessor::processBlock;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -22,7 +25,7 @@ public:
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    double getTailLengthSeconds() const override { return 2.0; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -37,6 +40,7 @@ public:
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts_; }
     Stich::StepSequencer& getSequencer() { return sequencer_; }
     Stich::PatternGenerator& getPatternGen() { return patternGen_; }
+    Stich::PresetManager& getPresetManager() { return presetManager_; }
 
     // Trigger pattern regeneration from UI
     void regeneratePattern();
@@ -47,6 +51,8 @@ private:
     Stich::GranularEngine granularEngine_;
     Stich::StepSequencer sequencer_;
     Stich::PatternGenerator patternGen_;
+    Stich::DattorroReverb reverb_;
+    Stich::PresetManager presetManager_;
 
     // Cached parameter pointers
     std::atomic<float>* grainSizeParam_ = nullptr;
@@ -57,6 +63,8 @@ private:
     std::atomic<float>* grainFreezeParam_ = nullptr;
     std::atomic<float>* grainFeedbackParam_ = nullptr;
     std::atomic<float>* grainMixParam_ = nullptr;
+    std::atomic<float>* grainWindowParam_ = nullptr;
+    std::atomic<float>* grainModeParam_ = nullptr;
 
     std::atomic<float>* seqRateParam_ = nullptr;
     std::atomic<float>* seqNumStepsParam_ = nullptr;
@@ -71,6 +79,18 @@ private:
 
     std::atomic<float>* filterTypeParam_ = nullptr;
     std::atomic<float>* filterResoParam_ = nullptr;
+
+    std::atomic<float>* reverbEnabledParam_ = nullptr;
+    std::atomic<float>* reverbPreDelayParam_ = nullptr;
+    std::atomic<float>* reverbSizeParam_ = nullptr;
+    std::atomic<float>* reverbDecayParam_ = nullptr;
+    std::atomic<float>* reverbDampingParam_ = nullptr;
+    std::atomic<float>* reverbDiffusionParam_ = nullptr;
+    std::atomic<float>* reverbModRateParam_ = nullptr;
+    std::atomic<float>* reverbModDepthParam_ = nullptr;
+    std::atomic<float>* reverbLowCutParam_ = nullptr;
+    std::atomic<float>* reverbHighCutParam_ = nullptr;
+    std::atomic<float>* reverbMixParam_ = nullptr;
 
     std::atomic<float>* masterOutputParam_ = nullptr;
     std::atomic<float>* masterMixParam_ = nullptr;

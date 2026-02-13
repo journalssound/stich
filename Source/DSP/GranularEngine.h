@@ -9,6 +9,31 @@ namespace Stich
 static constexpr int kMaxGrains = 64;
 static constexpr int kGrainBufferSeconds = 4;
 
+// All available grain window/envelope shapes
+enum class GrainWindow
+{
+    Hann,
+    Gaussian,
+    Triangle,
+    Trapezoid,   // Tukey window (flat top, tapered edges)
+    Blackman,
+    Rectangle,
+    HalfSine,
+    NumWindows
+};
+
+// Granular processing modes
+enum class GranularMode
+{
+    Standard,    // Normal granular processing
+    Cloud,       // Dense overlapping cloud, smoothed, wide stereo
+    Delay,       // Rhythmic grain echoes at fixed intervals
+    Spectral,    // Ultra-short grains for spectral smearing
+    Stretch,     // Time-stretch: decouple time from pitch
+    Scatter,     // Maximum randomization and spatial spread
+    NumModes
+};
+
 struct Grain
 {
     double readPosition = 0.0;
@@ -20,13 +45,7 @@ struct Grain
     bool reverse = false;
     bool active = false;
 
-    // Hann window envelope
-    float getEnvelope() const
-    {
-        if (lengthSamples <= 0) return 0.0f;
-        float phase = static_cast<float>(elapsed) / static_cast<float>(lengthSamples);
-        return 0.5f * (1.0f - std::cos(juce::MathConstants<float>::twoPi * phase));
-    }
+    float getEnvelope(GrainWindow window) const;
 };
 
 class GranularEngine
@@ -37,8 +56,6 @@ public:
     void prepare(double sampleRate, int samplesPerBlock);
     void reset();
 
-    // Process a stereo buffer in-place, writing granular output.
-    // dryL/dryR are preserved for external dry/wet mixing.
     void process(float* leftOut, float* rightOut,
                  const float* leftIn, const float* rightIn,
                  int numSamples);
@@ -52,6 +69,8 @@ public:
     void setFreeze(bool frozen);
     void setFeedback(float percent);
     void setMix(float percent);
+    void setWindow(GrainWindow w);
+    void setMode(GranularMode m);
 
     // Modulation from sequencer
     void setPitchModulation(float semitones);
@@ -60,8 +79,16 @@ public:
 private:
     void writeToBuffer(float left, float right);
     float readFromBuffer(int channel, double position) const;
-    void triggerGrain();
     Grain& findFreeGrain();
+
+    // Mode-specific grain triggering
+    void triggerGrainForMode();
+    void triggerStandard();
+    void triggerCloud();
+    void triggerDelay();
+    void triggerSpectral();
+    void triggerStretch();
+    void triggerScatter();
 
     // Grain buffer (stereo circular)
     std::vector<float> bufferL_, bufferR_;
@@ -75,19 +102,25 @@ private:
     // Parameters
     float grainSizeMs_ = 80.0f;
     float density_ = 10.0f;
-    float spray_ = 20.0f;
+    float spray_ = 0.2f;
     float pitchSemitones_ = 0.0f;
     float reverseProb_ = 0.0f;
     float feedback_ = 0.0f;
     float mix_ = 1.0f;
+    GrainWindow window_ = GrainWindow::Hann;
+    GranularMode mode_ = GranularMode::Standard;
 
     // Modulation inputs from sequencer
     float pitchMod_ = 0.0f;
     float feedbackMod_ = 0.0f;
 
-    // Grain scheduling
+    // Scheduling
     double sampleRate_ = 44100.0;
     double samplesUntilNextGrain_ = 0.0;
+
+    // Stretch mode state
+    double stretchReadHead_ = 0.0;
+    double stretchSpeed_ = 0.5;
 
     // RNG
     std::mt19937 rng_;
