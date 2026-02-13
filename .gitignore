@@ -1,5 +1,8 @@
 # Build
 build/
+
+# Allow pre-built release binaries
+!dist/
 cmake-build-*/
 out/
 
