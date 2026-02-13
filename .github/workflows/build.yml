@@ -1,0 +1,59 @@
+name: Build Stich Plugin
+
+on:
+  push:
+    branches: [ main, 'claude/**' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel $(sysctl -n hw.logicalcpu)
+
+      - name: List artifacts
+        run: |
+          echo "=== VST3 ==="
+          ls -la build/Stich_artefacts/Release/VST3/ || true
+          echo "=== AU ==="
+          ls -la build/Stich_artefacts/Release/AU/ || true
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Stich-VST3-macOS
+          path: build/Stich_artefacts/Release/VST3/Stich.vst3
+          if-no-files-found: error
+
+      - name: Upload AU
+        uses: actions/upload-artifact@v4
+        with:
+          name: Stich-AU-macOS
+          path: build/Stich_artefacts/Release/AU/Stich.component
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Stich-VST3-Windows
+          path: build/Stich_artefacts/Release/VST3/Stich.vst3
+          if-no-files-found: error
